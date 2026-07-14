@@ -40,7 +40,7 @@
 | Deployment               | API on Fly.io (Dockerized); frontend on Vercel; DB on Supabase                                                                               |                                                   |
 | CI/CD                    | GitHub Actions                                                                                                                               | Lint → typecheck → tests → evals → build → deploy |
 | Observability            | OpenTelemetry traces, structlog JSON logs, Sentry for errors                                                                                 |                                                   |
-| Package management       | `uv` for Python, `bun` for JS                                                                                                                | Lockfiles committed (see ADR 0001)                |
+| Package management       | `uv` for Python, `bun` for JS                                                                                                                | Lockfiles committed (see ADR 0006)                |
 
 ---
 

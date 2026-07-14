@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     api_port: int = 8000
     cors_allowed_origins: Annotated[list[str], NoDecode] = ["http://localhost:3000"]
     database_url: str = "postgresql://kanuni:kanuni@localhost:5432/kanuni"
+    storage_local_path: str = "./data/documents"
+    max_upload_size_bytes: int = 100 * 1024 * 1024
 
     @field_validator("cors_allowed_origins", mode="before")
     @classmethod

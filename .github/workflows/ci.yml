@@ -122,8 +122,11 @@ jobs:
       - name: Install Python dependencies
         run: uv sync --all-packages
 
-      - name: pytest
-        run: uv run pytest --cov --cov-report=term-missing
+      - name: pytest (unit tests only — integration tests run in the integration-tests job)
+        run: >
+          uv run pytest --cov --cov-report=term-missing
+          --ignore=apps/ingestion/tests/integration
+          --ignore=apps/api/tests/integration
 
   integration-tests:
     name: Integration tests (Postgres + pgvector)
@@ -153,18 +156,35 @@ jobs:
             https://github.com/amacneil/dbmate/releases/latest/download/dbmate-linux-amd64
           chmod +x /usr/local/bin/dbmate
 
+      # tesseract lets the scanned-document fixture (bot-2003-forex-listed-
+      # securities.pdf) exercise real OCR here; every other external
+      # provider (embedding, metadata-extraction LLM) stays mocked per §13.
+      - name: Install tesseract
+        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-swa
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Python dependencies
+        run: uv sync --all-packages
+
       - name: Run migrations up
         run: dbmate --migrations-dir infra/migrations --no-dump-schema up
         env:
           DATABASE_URL: postgres://kanuni:kanuni@localhost:5432/kanuni?sslmode=disable
 
+      - name: Ingestion + admin API integration tests
+        run: uv run pytest apps/ingestion/tests/integration apps/api/tests/integration -v
+        env:
+          KANUNI_DATABASE_URL: postgres://kanuni:kanuni@localhost:5432/kanuni
+
       - name: Roll migrations back (down path must work — PROJECT_SPEC.md §12)
         run: dbmate --migrations-dir infra/migrations --no-dump-schema down
         env:
           DATABASE_URL: postgres://kanuni:kanuni@localhost:5432/kanuni?sslmode=disable
-
-      # Retrieval SQL against seeded fixtures is added once ingestion (Phase 1)
-      # and retrieval (Phase 2) land — this job currently smoke-tests the schema.
 
   security:
     name: Secret scan and dependency audit

@@ -33,6 +33,7 @@ services:
     env_file: .env
     environment:
       KANUNI_DATABASE_URL: postgresql://${POSTGRES_USER:-kanuni}:${POSTGRES_PASSWORD:-kanuni}@db:5432/${POSTGRES_DB:-kanuni}
+      KANUNI_STORAGE_LOCAL_PATH: /data/documents
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -41,6 +42,8 @@ services:
     volumes:
       - ./apps/api/src:/workspace/apps/api/src
       - ./apps/api/tests:/workspace/apps/api/tests
+      - ./sources.yaml:/workspace/apps/api/sources.yaml
+      - document-storage:/data/documents
 
   ingestion:
     build:
@@ -49,12 +52,15 @@ services:
     env_file: .env
     environment:
       KANUNI_DATABASE_URL: postgresql://${POSTGRES_USER:-kanuni}:${POSTGRES_PASSWORD:-kanuni}@db:5432/${POSTGRES_DB:-kanuni}
+      KANUNI_STORAGE_LOCAL_PATH: /data/documents
     depends_on:
       migrate:
         condition: service_completed_successfully
     volumes:
       - ./apps/ingestion/src:/workspace/apps/ingestion/src
       - ./apps/ingestion/tests:/workspace/apps/ingestion/tests
+      - ./sources.yaml:/workspace/apps/ingestion/sources.yaml
+      - document-storage:/data/documents
 
   web:
     build:
@@ -72,3 +78,4 @@ services:
 
 volumes:
   pgdata:
+  document-storage:

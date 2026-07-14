@@ -47,13 +47,24 @@ files = [
     "apps/ingestion/tests",
     "evals",
 ]
-mypy_path = ["apps/api/src", "apps/ingestion/src"]
+mypy_path = ["apps/api/src", "apps/ingestion/src", "apps/ingestion/tests"]
 explicit_package_bases = true
 
 [[tool.mypy.overrides]]
 module = "asyncpg.*"
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = ["pytesseract.*", "fitz.*", "sentence_transformers.*", "pdfplumber.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["apps/api/tests", "apps/ingestion/tests"]
 asyncio_mode = "auto"
+# apps/api/tests and apps/ingestion/tests share a basename ("tests") and,
+# under the default "prepend" import mode, their conftest.py files collide
+# in sys.modules; importlib mode resolves each by its full file path instead.
+# Neither tree has an __init__.py, for the same reason — see each
+# conftest.py's sys.path shim for how sibling test-only modules (e.g.
+# apps/ingestion/tests/fakes.py) are still importable by bare name.
+addopts = "--import-mode=importlib"

@@ -1,0 +1,86 @@
+# Kanuni source registry.
+#
+# This file — not database rows or code — is the single source of truth for
+# which document sources (issuing institutions) Kanuni knows about
+# (PROJECT_SPEC.md §1, §4.4, ADR 0001, ADR 0002). Adding a new source is a
+# pure data change: add an entry here, drop its fixtures/manifest entries,
+# and the ingestion pipeline requires zero code changes.
+#
+# Schema:
+#
+# sources:
+#   <source_id>:                 # slug written verbatim into documents.source_id
+#     name: str                  # human-readable source name
+#     issuing_body: str          # written into documents.issuing_body
+#     jurisdiction: str          # written into documents.jurisdiction
+#     documents:                 # manifest entries `kanuni ingest` matches
+#                                 # uploaded files against by filename; optional
+#                                 # per-file, and never a substitute for the
+#                                 # pipeline's own extraction — a mismatch
+#                                 # between manifest and extracted metadata is
+#                                 # logged, not silently overwritten.
+#       - filename: str          # basename matched against the uploaded file
+#         title: str
+#         doc_type: circular | act | regulation | notice | guideline
+#         language: en | sw
+#         reference_number: str | null   # null when genuinely unknown — see
+#                                         # bot-2015-electronic-money.pdf below
+#         issued_date: "YYYY-MM-DD" | null
+
+sources:
+  bot:
+    name: "Bank of Tanzania"
+    issuing_body: "Bank of Tanzania"
+    jurisdiction: "Tanzania"
+    documents:
+      - filename: bot-2014-licensing.pdf
+        title: "The Banking and Financial Institutions (Licensing) Regulations, 2014"
+        doc_type: regulation
+        language: en
+        reference_number: "G.N. No. 297"
+        issued_date: "2014-08-22"
+
+      - filename: bot-2023-licensing-amendment.pdf
+        title: "The Banking and Financial Institutions (Licensing) (Amendment) Regulations, 2022"
+        doc_type: regulation
+        language: en
+        reference_number: "G.N. No. 13"
+        issued_date: "2023-01-20"
+        # Amends bot-2014-licensing.pdf (cites "G.N. No. 297 of 2014" in its
+        # own text) — the relation is detected by the pipeline's metadata &
+        # versioning stage (§7 stage 4), not declared here.
+
+      - filename: bot-2019-huduma-ndogo-swahili.pdf
+        title: "Kanuni za Matumizi ya Fedha za Kigeni za Mwaka 2025"
+        doc_type: regulation
+        language: sw
+        reference_number: "G.N. No. 198"
+        issued_date: "2025-03-28"
+
+      - filename: bot-2023-capital-adequacy.pdf
+        title: "The Banking and Financial Institutions (Capital Adequacy) Regulations, 2023"
+        doc_type: regulation
+        language: en
+        reference_number: "G.N. No. 727"
+        issued_date: "2023-10-06"
+
+      - filename: bot-2015-electronic-money.pdf
+        title: "The Electronic Money Regulations, 2015"
+        doc_type: regulation
+        language: en
+        # This copy's gazette number and publication date are literally
+        # blank placeholders in the source PDF ("GOVERNMENT NOTICE
+        # NO. ……… published on ………"). Recorded as null rather than guessed,
+        # per §7 stage 4's "do not guess" rule.
+        reference_number: null
+        issued_date: null
+
+      - filename: bot-2003-forex-listed-securities.pdf
+        title: "Foreign Exchange (Listed Securities) Regulations"
+        doc_type: regulation
+        language: en
+        # Scanned (no text layer) — title is a best-effort label from the
+        # filename; reference_number/issued_date are left null rather than
+        # guessed ahead of OCR actually running.
+        reference_number: null
+        issued_date: null

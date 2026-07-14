@@ -91,3 +91,27 @@ class ValidationFailedError(KanuniError):
     error_code = "validation_failed"
     status_code = 422
     detail = "The request failed validation."
+
+
+class AuthenticationError(KanuniError):
+    """Raised when a request has no API key, or the key is unknown or revoked.
+
+    Not in PROJECT_SPEC.md §4.2's enumerated hierarchy — added because §4.3
+    mandates API-key auth and the hierarchy needs a 401 case to map through
+    the same RFC 7807 handler. See the Phase 1 handoff summary.
+    """
+
+    error_code = "authentication_failed"
+    status_code = 401
+    detail = "A valid API key is required."
+
+
+class AuthorizationError(KanuniError):
+    """Raised when a valid API key lacks the scope a route requires.
+
+    See :class:`AuthenticationError` for why this extends §4.2's hierarchy.
+    """
+
+    error_code = "authorization_failed"
+    status_code = 403
+    detail = "This API key does not have the required scope."

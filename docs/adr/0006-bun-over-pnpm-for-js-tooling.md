@@ -1,4 +1,4 @@
-# 0001. Use bun, not pnpm, for JS package management
+# 0006. Use bun, not pnpm, for JS package management
 
 ## Context
 
