@@ -1,0 +1,200 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  UV_VERSION: "0.5.11"
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "20"
+
+jobs:
+  lint:
+    name: Lint, typecheck, format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Python dependencies
+        run: uv sync --all-packages
+
+      - name: ruff check
+        run: uv run ruff check .
+
+      - name: ruff format --check
+        run: uv run ruff format --check .
+
+      - name: mypy --strict
+        run: uv run mypy
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: eslint
+        run: pnpm --filter kanuni-web lint
+
+      - name: tsc --noEmit
+        run: pnpm --filter kanuni-web typecheck
+
+      - name: prettier --check
+        run: pnpm --filter kanuni-web exec prettier --check .
+
+  unit-tests:
+    name: Unit tests
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Python dependencies
+        run: uv sync --all-packages
+
+      - name: pytest
+        run: uv run pytest --cov --cov-report=term-missing
+
+  integration-tests:
+    name: Integration tests (Postgres + pgvector)
+    needs: lint
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg15
+        env:
+          POSTGRES_USER: kanuni
+          POSTGRES_PASSWORD: kanuni
+          POSTGRES_DB: kanuni
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U kanuni -d kanuni"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dbmate
+        run: |
+          curl -fsSL -o /usr/local/bin/dbmate \
+            https://github.com/amacneil/dbmate/releases/latest/download/dbmate-linux-amd64
+          chmod +x /usr/local/bin/dbmate
+
+      - name: Run migrations up
+        run: dbmate --migrations-dir infra/migrations --no-dump-schema up
+        env:
+          DATABASE_URL: postgres://kanuni:kanuni@localhost:5432/kanuni?sslmode=disable
+
+      - name: Roll migrations back (down path must work — PROJECT_SPEC.md §12)
+        run: dbmate --migrations-dir infra/migrations --no-dump-schema down
+        env:
+          DATABASE_URL: postgres://kanuni:kanuni@localhost:5432/kanuni?sslmode=disable
+
+      # Retrieval SQL against seeded fixtures is added once ingestion (Phase 1)
+      # and retrieval (Phase 2) land — this job currently smoke-tests the schema.
+
+  security:
+    name: Secret scan and dependency audit
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Python dependencies
+        run: uv sync --all-packages
+
+      - name: pip-audit
+        run: |
+          uv export --format requirements-txt --no-hashes > /tmp/requirements.txt
+          uvx pip-audit -r /tmp/requirements.txt
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: pnpm audit
+        run: pnpm audit --audit-level=high
+
+  fresh-clone-setup:
+    name: Fresh-clone make setup
+    needs: [unit-tests, integration-tests]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: make setup
+        run: make setup
+
+  docker-build:
+    name: Docker build (api, ingestion, web)
+    needs: fresh-clone-setup
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build api image
+        run: docker build -f apps/api/Dockerfile -t kanuni-api:ci .
+
+      - name: Build ingestion image
+        run: docker build -f apps/ingestion/Dockerfile -t kanuni-ingestion:ci .
+
+      - name: Build web image
+        run: docker build -f apps/web/Dockerfile -t kanuni-web:ci .

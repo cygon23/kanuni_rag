@@ -1,0 +1,74 @@
+services:
+  db:
+    image: pgvector/pgvector:pg15
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-kanuni}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kanuni}
+      POSTGRES_DB: ${POSTGRES_DB:-kanuni}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kanuni} -d ${POSTGRES_DB:-kanuni}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    image: amacneil/dbmate
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-kanuni}:${POSTGRES_PASSWORD:-kanuni}@db:5432/${POSTGRES_DB:-kanuni}?sslmode=disable
+    volumes:
+      - ./infra/migrations:/db/migrations
+    command: ["--wait", "up"]
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    env_file: .env
+    environment:
+      KANUNI_DATABASE_URL: postgresql://${POSTGRES_USER:-kanuni}:${POSTGRES_PASSWORD:-kanuni}@db:5432/${POSTGRES_DB:-kanuni}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./apps/api/src:/workspace/apps/api/src
+      - ./apps/api/tests:/workspace/apps/api/tests
+
+  ingestion:
+    build:
+      context: .
+      dockerfile: apps/ingestion/Dockerfile
+    env_file: .env
+    environment:
+      KANUNI_DATABASE_URL: postgresql://${POSTGRES_USER:-kanuni}:${POSTGRES_PASSWORD:-kanuni}@db:5432/${POSTGRES_DB:-kanuni}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - ./apps/ingestion/src:/workspace/apps/ingestion/src
+      - ./apps/ingestion/tests:/workspace/apps/ingestion/tests
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./apps/web/src:/workspace/apps/web/src
+      - ./apps/web/public:/workspace/apps/web/public
+    depends_on:
+      - api
+
+volumes:
+  pgdata:

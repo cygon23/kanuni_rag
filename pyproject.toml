@@ -1,0 +1,59 @@
+[project]
+name = "kanuni"
+version = "0.1.0"
+description = "Kanuni monorepo workspace root — see PROJECT_SPEC.md."
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[tool.uv.workspace]
+members = ["apps/api", "apps/ingestion"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.8.0",
+    "mypy>=1.13.0",
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["apps/api/src", "apps/ingestion/src"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # bugbear
+    "C4",  # comprehensions
+    "SIM", # simplify
+    "N",   # pep8-naming
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["kanuni_api", "kanuni_ingest"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = [
+    "apps/api/src",
+    "apps/api/tests",
+    "apps/ingestion/src",
+    "apps/ingestion/tests",
+    "evals",
+]
+mypy_path = ["apps/api/src", "apps/ingestion/src"]
+explicit_package_bases = true
+
+[[tool.mypy.overrides]]
+module = "asyncpg.*"
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["apps/api/tests", "apps/ingestion/tests"]
+asyncio_mode = "auto"

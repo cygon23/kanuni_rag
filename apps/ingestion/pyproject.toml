@@ -1,0 +1,17 @@
+[project]
+name = "kanuni-ingestion"
+version = "0.1.0"
+description = "Kanuni ingestion pipeline worker and bulk-ingestion CLI."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "pydantic>=2.9.0",
+    "pydantic-settings>=2.6.0",
+    "structlog>=24.4.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kanuni_ingest"]

@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker --version)",
+      "Bash(sudo docker --version)",
+      "Bash(go version *)",
+      "Bash(corepack enable *)",
+      "Bash(pnpm --version)",
+      "Bash(curl -sSL -o /dev/null -w \"%{http_code}\\\\n\" https://github.com)",
+      "Bash(uv python *)",
+      "Bash(curl -sSL -o /dev/null -w \"%{http_code}\\\\n\" https://github.com/amacneil/dbmate/releases/latest/download/dbmate-linux-amd64)",
+      "Bash(curl -sSL https://raw.githubusercontent.com/github/choosealicense.com/gh-pages/_licenses/mit.txt)",
+      "Bash(:)",
+      "Bash(pnpm dlx *)",
+      "Bash(curl -sSL -o /dev/null -w \"%{http_code}\\\\n\" https://registry.npmjs.org/create-next-app --max-time 15)",
+      "Bash(npm config *)",
+      "Bash(pnpm config *)",
+      "Bash(env)",
+      "Bash(npx --yes create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --use-pnpm --no-turbopack --disable-git --yes)",
+      "Bash(uv sync *)",
+      "Bash(pnpm install *)",
+      "Bash(uv run *)",
+      "Bash(pnpm help *)",
+      "Bash(echo \"EXIT_CODE=$?\")",
+      "Bash(bun --version)",
+      "Bash(time bun install)",
+      "Bash(jobs -l)",
+      "Bash(pkill -f \"pnpm install\")"
+    ]
+  }
+}
