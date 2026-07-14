@@ -1,5 +1,5 @@
 # Build context is the repo root (pnpm workspace) — see docker-compose.yml.
-FROM node:20-slim
+FROM node:22-slim
 
 RUN corepack enable
 
