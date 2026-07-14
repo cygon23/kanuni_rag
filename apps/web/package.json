@@ -9,6 +9,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "format:check": "prettier --check .",
     "test": "echo \"no frontend tests yet (PROJECT_SPEC.md Phase 5)\""
   },
   "dependencies": {

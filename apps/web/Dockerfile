@@ -1,13 +1,11 @@
-# Build context is the repo root (pnpm workspace) — see docker-compose.yml.
-FROM node:22-slim
-
-RUN corepack enable
+# Build context is the repo root (bun workspace) — see docker-compose.yml.
+FROM oven/bun:1
 
 WORKDIR /workspace
 COPY . .
-RUN pnpm install --frozen-lockfile
+RUN bun install --frozen-lockfile
 
 WORKDIR /workspace/apps/web
 EXPOSE 3000
 
-CMD ["pnpm", "dev"]
+CMD ["bun", "run", "dev"]

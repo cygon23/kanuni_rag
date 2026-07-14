@@ -4,6 +4,6 @@ node_modules
 dist
 build
 coverage
-pnpm-lock.yaml
+bun.lock
 *.md
 evals/reports

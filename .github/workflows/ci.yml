@@ -8,7 +8,7 @@ on:
 env:
   UV_VERSION: "0.5.11"
   PYTHON_VERSION: "3.12"
-  NODE_VERSION: "22"
+  BUN_VERSION: "1.3.9"
 
 jobs:
   # Detects which parts of the monorepo a push/PR actually touches so
@@ -40,8 +40,7 @@ jobs:
               - 'apps/web/**'
               - 'packages/shared/**'
               - 'package.json'
-              - 'pnpm-lock.yaml'
-              - 'pnpm-workspace.yaml'
+              - 'bun.lock'
               - 'tsconfig.base.json'
             migrations:
               - 'infra/migrations/**'
@@ -89,26 +88,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
+      - name: Set up bun
+        uses: oven-sh/setup-bun@v2
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
+          bun-version: ${{ env.BUN_VERSION }}
 
       - name: Install JS dependencies
-        run: pnpm install --frozen-lockfile
+        run: bun install --frozen-lockfile
 
       - name: eslint
-        run: pnpm --filter kanuni-web lint
+        run: bun run --filter kanuni-web lint
 
       - name: tsc --noEmit
-        run: pnpm --filter kanuni-web typecheck
+        run: bun run --filter kanuni-web typecheck
 
       - name: prettier --check
-        run: pnpm --filter kanuni-web exec prettier --check .
+        run: bun run --filter kanuni-web format:check
 
   unit-tests:
     name: Unit tests (Python)
@@ -205,24 +200,19 @@ jobs:
           uv export --format requirements-txt --no-hashes > /tmp/requirements.txt
           uvx pip-audit -r /tmp/requirements.txt
 
-      - name: Set up pnpm
+      - name: Set up bun
         if: needs.changes.outputs.web == 'true'
-        uses: pnpm/action-setup@v4
-
-      - name: Set up Node
-        if: needs.changes.outputs.web == 'true'
-        uses: actions/setup-node@v4
+        uses: oven-sh/setup-bun@v2
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
+          bun-version: ${{ env.BUN_VERSION }}
 
       - name: Install JS dependencies
         if: needs.changes.outputs.web == 'true'
-        run: pnpm install --frozen-lockfile
+        run: bun install --frozen-lockfile
 
-      - name: pnpm audit
+      - name: bun audit
         if: needs.changes.outputs.web == 'true'
-        run: pnpm audit --audit-level=high
+        run: bun audit --audit-level=high
 
   fresh-clone-setup:
     name: Fresh-clone make setup
@@ -238,14 +228,10 @@ jobs:
           version: ${{ env.UV_VERSION }}
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
+      - name: Set up bun
+        uses: oven-sh/setup-bun@v2
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
+          bun-version: ${{ env.BUN_VERSION }}
 
       - name: make setup
         run: make setup

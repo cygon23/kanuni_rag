@@ -40,7 +40,7 @@
 | Deployment               | API on Fly.io (Dockerized); frontend on Vercel; DB on Supabase                                                                               |                                                   |
 | CI/CD                    | GitHub Actions                                                                                                                               | Lint → typecheck → tests → evals → build → deploy |
 | Observability            | OpenTelemetry traces, structlog JSON logs, Sentry for errors                                                                                 |                                                   |
-| Package management       | `uv` for Python, `pnpm` for JS                                                                                                               | Lockfiles committed                               |
+| Package management       | `uv` for Python, `bun` for JS                                                                                                                | Lockfiles committed (see ADR 0001)                |
 
 ---
 
@@ -139,7 +139,7 @@ kanuni/
 - **Prompt-injection defense:** retrieved document text is untrusted. It is wrapped in clearly delimited context blocks; the system prompt instructs the model to treat context as data; answers must cite chunk IDs that actually exist (validated server-side — see §8.3). Log and flag suspicious injection-like content in documents.
 - **SQL:** parameterized queries only. No string-built SQL anywhere.
 - **HTTP:** CORS locked to the frontend origin; standard security headers; HTTPS-only in deployment.
-- **Dependencies:** Dependabot enabled; `pip-audit` / `pnpm audit` in CI.
+- **Dependencies:** Dependabot enabled; `pip-audit` / `bun audit` in CI.
 - **PII:** the system stores regulations (public documents) and queries. Query logs are retained 30 days by default and this is documented.
 
 ### 4.4 Reusability / public-repo readiness

@@ -12,7 +12,7 @@ confidence-gated answers.
 ## Quickstart
 
 ```bash
-make setup   # install Python (uv) and JS (pnpm) dependencies
+make setup   # install Python (uv) and JS (bun) dependencies
 make dev     # docker compose up: postgres, api, ingestion worker, web
 ```
 

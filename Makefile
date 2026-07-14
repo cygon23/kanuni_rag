@@ -1,9 +1,9 @@
 .PHONY: setup dev down test lint format eval migrate
 
-setup: ## Install Python (uv) and JS (pnpm) dependencies for a fresh clone.
+setup: ## Install Python (uv) and JS (bun) dependencies for a fresh clone.
 	test -f .env || cp .env.example .env
 	uv sync --all-packages
-	pnpm install --frozen-lockfile
+	bun install --frozen-lockfile
 
 dev: ## Bring up the full local stack (db, api, ingestion, web).
 	docker compose up --build
@@ -13,14 +13,15 @@ down: ## Tear down the local stack and its volumes.
 
 test: ## Run Python and frontend test suites.
 	uv run pytest
-	pnpm --filter kanuni-web test
+	bun run --filter kanuni-web test
 
 lint: ## Run all linters/formatters/type-checkers in check mode.
 	uv run ruff check .
 	uv run ruff format --check .
 	uv run mypy
-	pnpm --filter kanuni-web lint
-	pnpm --filter kanuni-web exec prettier --check .
+	bun run --filter kanuni-web lint
+	bun run --filter kanuni-web typecheck
+	bun run --filter kanuni-web format:check
 
 eval: ## Run the retrieval + answer evaluation suite and write a report.
 	uv run python evals/run_retrieval_eval.py
