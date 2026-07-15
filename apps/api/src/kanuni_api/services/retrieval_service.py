@@ -1,7 +1,5 @@
 """Orchestrates the hybrid retrieval pipeline: embed -> dense+sparse -> fuse -> rerank (§8.1)."""
 
-import asyncio
-
 import asyncpg
 
 from kanuni_api.config import Settings
@@ -36,19 +34,28 @@ async def retrieve(
     """
     query_embedding = await embedding_provider.embed_query(question)
 
-    dense_results, sparse_results = await asyncio.gather(
-        dense.dense_search(
-            connection,
-            query_embedding,
-            top_k=settings.dense_top_k,
-            include_historical=include_historical,
-        ),
-        sparse.sparse_search(
-            connection,
-            question,
-            top_k=settings.sparse_top_k,
-            include_historical=include_historical,
-        ),
+    # Sequential, not asyncio.gather — found live: a single asyncpg
+    # Connection can only run one operation at a time, and both calls
+    # shared this same `connection`. Concurrent use crashed with
+    # `InterfaceError: cannot perform operation: another operation is in
+    # progress` the first time this ran against a real database (every
+    # prior test/eval run either mocked dense_search/sparse_search
+    # outright or gave each its own connection — this exact sharing
+    # pattern had never actually executed for real before). Properly
+    # parallelizing would mean acquiring a second connection from the
+    # pool for one of the two calls — deferred; see docs/PROGRESS.md's
+    # Open ADR candidates.
+    dense_results = await dense.dense_search(
+        connection,
+        query_embedding,
+        top_k=settings.dense_top_k,
+        include_historical=include_historical,
+    )
+    sparse_results = await sparse.sparse_search(
+        connection,
+        question,
+        top_k=settings.sparse_top_k,
+        include_historical=include_historical,
     )
 
     fused = fusion.reciprocal_rank_fusion(

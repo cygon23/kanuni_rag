@@ -25,4 +25,11 @@ def configure_sentry(*, dsn: str, environment: Environment, release: str) -> Non
         environment=environment,
         release=release,
         integrations=[StarletteIntegration(), FastApiIntegration()],
+        # GlitchTip (the default target — see docs/NEEDS.md) doesn't
+        # support session tracking and explicitly asks integrators to
+        # disable it. A low traces_sample_rate gives free baseline
+        # latency data from the two integrations above without the cost
+        # of tracing every request.
+        auto_session_tracking=False,
+        traces_sample_rate=0.01,
     )

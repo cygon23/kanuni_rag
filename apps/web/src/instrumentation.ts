@@ -10,5 +10,10 @@ export function register() {
     dsn: process.env.SENTRY_DSN ?? "",
     environment: process.env.NODE_ENV,
     release: process.env.RELEASE_SHA ?? process.env.VERCEL_GIT_COMMIT_SHA ?? "dev",
+    // A low tracesSampleRate gives free baseline latency data. (GlitchTip's
+    // own setup docs also recommend `autoSessionTracking: false` — that
+    // option no longer exists in this SDK version's types, per tsc; recent
+    // @sentry/nextjs releases apparently dropped/renamed it.)
+    tracesSampleRate: 0.01,
   });
 }

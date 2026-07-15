@@ -4,6 +4,7 @@ Mirrors `kanuni_ingest.embedding` — the two services share the database,
 not code (ADR 0005), so each keeps its own small copy of this interface.
 """
 
+import asyncio
 from typing import Protocol
 
 import structlog
@@ -68,6 +69,14 @@ class Bgem3EmbeddingProvider:
         Returns:
             A 1024-dimensional embedding vector.
         """
+        return await asyncio.to_thread(self._encode, text)
+
+    def _encode(self, text: str) -> list[float]:
+        # Runs off the event loop (see embed_query) — SentenceTransformer's
+        # first call also lazy-loads (and, on a cache miss, downloads) the
+        # model, both synchronous and, left on the event loop, capable of
+        # blocking every other in-flight request on a single-process
+        # server for the entire duration (found live: it did).
         model = self._get_model()
         vector = model.encode([text], normalize_embeddings=True)[0]  # type: ignore[attr-defined]
         result: list[float] = vector.tolist()

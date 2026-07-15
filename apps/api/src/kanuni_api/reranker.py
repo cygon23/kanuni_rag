@@ -1,5 +1,6 @@
 """Cross-encoder reranker abstraction: never call the real model in tests (§13)."""
 
+import asyncio
 from typing import Protocol
 
 import structlog
@@ -69,6 +70,13 @@ class Bgereranker:
         """
         if not candidates:
             return []
+        return await asyncio.to_thread(self._predict, question, candidates)
+
+    def _predict(self, question: str, candidates: list[str]) -> list[float]:
+        # Runs off the event loop (see score) — same reasoning as
+        # Bgem3EmbeddingProvider._encode: this is synchronous and, on
+        # first call, downloads the model; left on the event loop it
+        # blocks every other in-flight request on a single-process server.
         model = self._get_model()
         pairs = [(question, candidate) for candidate in candidates]
         scores = model.predict(pairs)  # type: ignore[attr-defined]

@@ -1235,3 +1235,141 @@ Continuing the post-handoff work above, in the same session.
   write currently has a real blast radius into what's nominally
   "production" data — acceptable for a small project today, worth
   revisiting (a second Supabase project) before real users depend on it.
+
+---
+
+## Post-handoff, round 3: GlitchTip wiring finished + a real §13 violation
+## found and fixed
+
+- Added GlitchTip's own recommended `auto_session_tracking=False` /
+  `traces_sample_rate=0.01` to both Python `configure_sentry()` calls.
+  Tried the same on the two `@sentry/nextjs` `Sentry.init()` call sites;
+  `tsc` immediately rejected `autoSessionTracking` — not a valid option
+  in the installed SDK version's types (apparently dropped/renamed in a
+  more recent Sentry JS SDK release than GlitchTip's docs assume). Kept
+  `tracesSampleRate` (which the types do accept) and documented the
+  discrepancy inline rather than silently dropping the option with no
+  explanation.
+- Live-verified the real GlitchTip DSN with `sentry_sdk.capture_message()`
+  + `flush()` from a standalone script — got back a real `event_id` with
+  no transport error, confirming the DSN and project are correctly wired
+  before spending any more time on it.
+- **Found a real, serious §13 violation while re-running the test suite
+  after wiring the DSN into `.env`**: pytest logged "Sentry is attempting
+  to send 2 pending events" — meaning `apps/api/tests/test_main.py`
+  (which calls `create_app()` directly, unmocked) had been constructing
+  the *real* `sentry_sdk` client with the *real* DSN, and the
+  `traces_sample_rate` just added was enough to probabilistically sample
+  and actually transmit real trace events during a normal test run. Root
+  cause was two layered bugs in `conftest.py`'s `_clean_kanuni_env`
+  fixture, both fixed:
+  1. It only stripped `KANUNI_`-prefixed env vars from `os.environ` —
+     `SENTRY_DSN`, `GROQ_API_KEY`, `SUPABASE_URL`, and
+     `SUPABASE_SERVICE_ROLE_KEY` are bare by deliberate design (matching
+     each provider's own conventional variable name — see Phase 3's
+     notes on `GROQ_API_KEY`), so a maintainer's real values for those
+     were never touched. Fixed by reading `Settings.model_fields` for
+     every field's `validation_alias` instead of hardcoding a list, so a
+     future bare-var field can't reintroduce the same gap silently.
+  2. More fundamentally: even stripping *every* var from `os.environ`
+     wouldn't have been enough. `pydantic-settings`' `env_file=".env"`
+     is a *second*, separate source it reads directly off disk on every
+     `Settings()` construction — a var merely deleted from the process
+     environment still resolves to whatever the real `.env` *file*
+     contains. `monkeypatch.delenv` cannot prevent this. Fixed by also
+     `monkeypatch.setitem(Settings.model_config, "env_file",
+     "/nonexistent/.env")`, which cleanly disables dotenv loading for
+     the duration of each test — the actual fix; (1) alone would not
+     have been sufficient and the leak would have continued.
+  - This means **`KANUNI_DATABASE_URL` — the real Supabase connection
+    string — had also been silently reachable via `Settings()` in every
+    test this entire session**, not just `SENTRY_DSN`. No test happened
+    to exercise an unmocked code path that would have opened that
+    connection for real (every DB-touching test mocks at the repository/
+    connection-injection layer, never lets `Settings().database_url`
+    reach an actual `asyncpg.connect` call) — but that was luck of what
+    existing tests happen to do, not a structural guarantee, until this
+    fix.
+  - Added `test_defaults_are_used_even_when_a_real_env_file_exists_on_disk`
+    to `test_config.py` as a standing regression guard, asserting every
+    bare-var field resolves to its safe class default despite the real
+    `.env` file being present on disk in this environment.
+  - Verified: re-ran the full suite after the fix — no more "pending
+    events" message, 137 passed (+1, the new regression test), 9 skipped
+    (unchanged skip set).
+
+## Post-handoff, round 4 — live Ask/Documents hang, two real bugs found
+
+The maintainer ran `apps/web` + `apps/api` live against the real Supabase
+instance and reported (via screenshot) that both the Documents page and
+the Ask page hung indefinitely in their loading-skeleton state, with no
+error surfaced anywhere in the browser. Diagnosed both root causes by
+reading the live API server's structured (`structlog`) log output rather
+than guessing — two independent, real bugs, both now fixed and verified.
+
+- **Bug 1 — blocking synchronous model calls froze the entire event
+  loop.** `apps/api/src/kanuni_api/embedding.py`
+  (`Bgem3EmbeddingProvider.embed_query`) and `reranker.py`
+  (`Bgereranker.score`) were declared `async def` but called
+  `sentence-transformers` directly in the coroutine body — synchronous
+  code that, on first call, also downloads the model (`BAAI/bge-m3`,
+  multiple GB) from Hugging Face. `uvicorn` here runs a single process/
+  single event loop; blocking it froze *every* concurrent request,
+  including the completely unrelated `GET /v1/documents` the Documents
+  page was stuck on. Independently corroborated: the stuck server
+  process didn't respond to `SIGTERM` at all (only `SIGKILL` worked) —
+  consistent with the event loop never getting a chance to process the
+  signal. Fixed in all three call sites (`apps/api/embedding.py`,
+  `apps/api/reranker.py`, and the `apps/ingestion` copy of
+  `embedding.py`, fixed for consistency even though that worker only
+  processes one document at a time today) by moving the actual
+  synchronous work into a private `_encode`/`_predict` method and
+  calling it via `await asyncio.to_thread(...)` from the public
+  `async def` method, each with a comment explaining why.
+- **Bug 2 — concurrent use of one asyncpg connection.**
+  After fixing bug 1 and re-testing, the API log showed a second, real
+  error on the very next query: `asyncpg.exceptions._base.InterfaceError:
+  cannot perform operation: another operation is in progress`.
+  `apps/api/src/kanuni_api/services/retrieval_service.py`'s `retrieve()`
+  ran `dense.dense_search()` and `sparse.sparse_search()` concurrently
+  via `asyncio.gather()` — both sharing the *same* `asyncpg.Connection`,
+  which can only execute one operation at a time. This had shipped since
+  Phase 2 without ever being caught, because no prior test or eval
+  exercised `retrieve()` against a real database with this exact
+  connection-sharing pattern (all `retrieve()`-level tests mock
+  `dense_search`/`sparse_search` directly). Fixed by running the two
+  searches sequentially instead of via `asyncio.gather`, with an inline
+  comment noting that real parallelization (acquiring a second
+  connection from the pool for one of the two calls) is deferred — see
+  Open ADR candidates below.
+- Verified both fixes: `ruff check`, `ruff format --check`, and
+  `mypy --strict` clean on every changed file; full suite
+  `137 passed, 9 skipped` (unchanged counts — no test exercises either
+  of the real code paths that were broken, by design, per §13). Restarted
+  the live API server and re-tested for real: `GET /v1/documents` now
+  responds in under a second (was: infinite hang), and a real
+  `POST /v1/query` request completes end-to-end with a `done` SSE event
+  (39.4s latency — genuinely slow on this sandbox's CPU-only inference,
+  not a hang) and no `InterfaceError` in the log. The query itself
+  returned `"confidence":"refuse"`, expected since no documents are
+  ingested into this Supabase instance yet — the point of this round was
+  confirming the pipeline completes at all, not the answer's quality.
+
+### Open ADR candidates (new this round)
+
+- `retrieval_service.retrieve()`'s dense/sparse search now runs
+  sequentially on one connection rather than truly in parallel — correct
+  but leaves latency on the table. Proper fix is acquiring a second
+  connection from the pool for one of the two calls; deferred since it
+  touches the connection-lifecycle contract between `dependencies.py`
+  and the retrieval layer, worth a deliberate decision rather than a
+  quick patch under live-debugging pressure.
+- Both blocking-call and connection-sharing bugs escaped every existing
+  test and eval because nothing exercises `retrieve()` end-to-end
+  against a real Postgres with real (non-fake) embedding/reranker
+  providers — the fixture/fake-based unit tests are correct in
+  isolation but can't catch this class of bug by construction. Worth
+  considering a narrowly-scoped integration test (real Postgres, fake
+  embedding/reranker to avoid the model-download cost, but a *real*
+  shared connection) specifically to guard against connection-sharing
+  regressions, since the current test suite structurally cannot.

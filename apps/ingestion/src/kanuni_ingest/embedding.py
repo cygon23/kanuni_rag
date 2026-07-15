@@ -1,5 +1,6 @@
 """Embedding provider abstraction: never call a real embedding model in tests (§13)."""
 
+import asyncio
 from typing import Protocol
 
 import structlog
@@ -65,6 +66,16 @@ class Bgem3EmbeddingProvider:
         Returns:
             One 1024-dimensional embedding vector per input text.
         """
+        return await asyncio.to_thread(self._encode, texts)
+
+    def _encode(self, texts: list[str]) -> list[list[float]]:
+        # Runs off the event loop (see embed_batch) — synchronous, and on
+        # first call downloads the model; the apps/api copy of this same
+        # class had this bug for real (blocked every concurrent request
+        # on a single-process server) — fixed here too even though the
+        # worker only ever runs one document at a time today, since the
+        # underlying mistake (blocking the loop from inside `async def`)
+        # is the same regardless of what else happens to be running.
         model = self._get_model()
         embeddings = model.encode(texts, normalize_embeddings=True)  # type: ignore[attr-defined]
         return [vector.tolist() for vector in embeddings]

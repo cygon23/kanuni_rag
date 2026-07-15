@@ -15,4 +15,6 @@ def configure_sentry(*, dsn: str, release: str) -> None:
         release: The deployed commit SHA (``Settings.release_sha``), for
             linking errors back to the exact code that produced them.
     """
-    sentry_sdk.init(dsn=dsn, release=release)
+    # GlitchTip (the default target — see docs/NEEDS.md) doesn't support
+    # session tracking and explicitly asks integrators to disable it.
+    sentry_sdk.init(dsn=dsn, release=release, auto_session_tracking=False)

@@ -11,4 +11,9 @@ Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN ?? "",
   environment: process.env.NODE_ENV,
   release: process.env.NEXT_PUBLIC_RELEASE_SHA ?? "dev",
+  // A low tracesSampleRate gives free baseline latency data. (GlitchTip's
+  // own setup docs also recommend `autoSessionTracking: false` — that
+  // option no longer exists in this SDK version's types, per tsc; recent
+  // @sentry/nextjs releases apparently dropped/renamed it.)
+  tracesSampleRate: 0.01,
 });

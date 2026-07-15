@@ -11,25 +11,30 @@ const MAX_RECENT = 10;
 // Avoids the read-in-a-useEffect-then-setState pattern, which both
 // causes an extra render and trips eslint-plugin-react-hooks'
 // set-state-in-effect rule.
+const EMPTY_SNAPSHOT: string[] = [];
 const listeners = new Set<() => void>();
 let cachedRaw: string | null | undefined;
-let cachedValue: string[] = [];
+let cachedValue: string[] = EMPTY_SNAPSHOT;
 
 function getSnapshot(): string[] {
   const raw = window.localStorage.getItem(STORAGE_KEY);
   if (raw !== cachedRaw) {
     cachedRaw = raw;
     try {
-      cachedValue = raw ? (JSON.parse(raw) as string[]) : [];
+      cachedValue = raw ? (JSON.parse(raw) as string[]) : EMPTY_SNAPSHOT;
     } catch {
-      cachedValue = [];
+      cachedValue = EMPTY_SNAPSHOT;
     }
   }
   return cachedValue;
 }
 
 function getServerSnapshot(): string[] {
-  return [];
+  // Must return a referentially-stable value across calls (React compares
+  // by reference) — a fresh `[]` literal here, even though "empty" every
+  // time, reads as "changed" on every render and triggers React's
+  // "getServerSnapshot should be cached" infinite-loop guard.
+  return EMPTY_SNAPSHOT;
 }
 
 function subscribe(listener: () => void): () => void {
