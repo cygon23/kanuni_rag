@@ -61,6 +61,20 @@ async def find_by_id(connection: asyncpg.Connection, document_id: UUID) -> Docum
     return _row_to_summary(row) if row is not None else None
 
 
+async def find_storage_path(connection: asyncpg.Connection, document_id: UUID) -> str | None:
+    """Fetch a document's storage path, for serving the original file back out.
+
+    Args:
+        connection: An open database connection.
+        document_id: The document's id.
+
+    Returns:
+        The storage-backend-relative path, or `None` if no such document exists.
+    """
+    row = await connection.fetchval("SELECT storage_path FROM documents WHERE id = $1", document_id)
+    return cast(str | None, row)
+
+
 async def list_documents(
     connection: asyncpg.Connection,
     *,

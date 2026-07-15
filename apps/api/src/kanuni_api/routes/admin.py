@@ -9,14 +9,20 @@ from fastapi.responses import JSONResponse
 
 from kanuni_api.config import Settings, get_settings
 from kanuni_api.db import ingestion_jobs_repository
-from kanuni_api.dependencies import DbConnection
+from kanuni_api.dependencies import (
+    DbConnection,
+    EmbeddingProviderDep,
+    RerankerProviderDep,
+    StorageDep,
+)
 from kanuni_api.middleware.auth import require_scope
 from kanuni_api.models.api_key import ApiKeyRecord
 from kanuni_api.models.document import DocumentType
 from kanuni_api.models.ingestion_job import IngestionJobSummary
+from kanuni_api.models.retrieval import ScoredChunk
 from kanuni_api.services import document_ingestion_service
+from kanuni_api.services.retrieval_service import retrieve
 from kanuni_api.sources import resolve_source
-from kanuni_api.storage import LocalFilesystemStorage
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"])
 
@@ -28,6 +34,7 @@ async def upload_document(
     connection: DbConnection,
     _api_key: Annotated[ApiKeyRecord, Depends(_require_admin_scope)],
     settings: Annotated[Settings, Depends(get_settings)],
+    storage: StorageDep,
     file: UploadFile,
     source_id: Annotated[str, Form()],
     title: Annotated[str, Form()],
@@ -44,7 +51,8 @@ async def upload_document(
     Args:
         connection: Database connection (injected).
         _api_key: The authenticated caller's key (requires `ingest:admin` scope).
-        settings: Application settings (for storage path and max upload size).
+        settings: Application settings (for max upload size).
+        storage: Document storage backend (injected).
         file: The uploaded PDF.
         source_id: The slug matching an entry in `sources.yaml`.
         title: The document's title.
@@ -60,7 +68,6 @@ async def upload_document(
     """
     source = resolve_source(source_id)
     content = await file.read()
-    storage = LocalFilesystemStorage(settings.storage_local_path)
 
     outcome = await document_ingestion_service.ingest_upload(
         connection,
@@ -123,3 +130,37 @@ async def retry_ingestion_job(
     """
     await ingestion_jobs_repository.reset_for_retry(connection, document_id)
     return {"status": "queued"}
+
+
+@router.get("/retrieve", response_model=list[ScoredChunk])
+async def debug_retrieve(
+    connection: DbConnection,
+    _api_key: Annotated[ApiKeyRecord, Depends(_require_admin_scope)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    embedding_provider: EmbeddingProviderDep,
+    reranker_provider: RerankerProviderDep,
+    question: str,
+    include_historical: bool = False,
+) -> list[ScoredChunk]:
+    """Run the hybrid retrieval pipeline and return scored chunks, for debugging (§14 Phase 2).
+
+    Args:
+        connection: Database connection (injected).
+        _api_key: The authenticated caller's key (requires `ingest:admin` scope).
+        settings: Application settings (retrieval thresholds).
+        embedding_provider: Provider used to embed the question.
+        reranker_provider: Provider used for cross-encoder reranking.
+        question: The question to retrieve chunks for.
+        include_historical: If True, include superseded/repealed documents.
+
+    Returns:
+        Up to `settings.rerank_top_k` chunks with every stage's score attached.
+    """
+    return await retrieve(
+        connection,
+        question,
+        settings=settings,
+        embedding_provider=embedding_provider,
+        reranker_provider=reranker_provider,
+        include_historical=include_historical,
+    )

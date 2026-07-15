@@ -70,6 +70,9 @@ class DocumentChunk(BaseModel):
     page_end: int = Field(ge=1)
     token_count: int = Field(ge=0)
     embedding: list[float] | None = None
+    language: str = "en"
+    """Denormalized from the parent document's language (ADR 0004): lets
+    `chunks.content_tsv` select the right text-search config per chunk."""
 
 
 class RelatedDocumentReference(BaseModel):

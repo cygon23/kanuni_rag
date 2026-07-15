@@ -13,6 +13,7 @@ from fastapi import Depends, Header
 from kanuni_api.db import api_keys_repository
 from kanuni_api.dependencies import DbConnection
 from kanuni_api.exceptions import AuthenticationError, AuthorizationError
+from kanuni_api.middleware.rate_limit import check_rate_limit
 from kanuni_api.models.api_key import ApiKeyRecord
 
 
@@ -20,7 +21,7 @@ async def _authenticate(
     connection: DbConnection,
     x_api_key: Annotated[str | None, Header()] = None,
 ) -> ApiKeyRecord:
-    """Resolve the API key presented in the `X-API-Key` header.
+    """Resolve the API key presented in the `X-API-Key` header and enforce its rate limit.
 
     Args:
         connection: A database connection, used to look up the key.
@@ -31,6 +32,7 @@ async def _authenticate(
 
     Raises:
         AuthenticationError: If no key is presented, or it is unknown/revoked.
+        RateLimitExceededError: If this key has exceeded `rate_limit_per_min`.
     """
     if not x_api_key:
         raise AuthenticationError()
@@ -38,6 +40,7 @@ async def _authenticate(
     key_record = await api_keys_repository.find_active_by_key_hash(connection, key_hash)
     if key_record is None:
         raise AuthenticationError()
+    check_rate_limit(key_record)
     return key_record
 
 

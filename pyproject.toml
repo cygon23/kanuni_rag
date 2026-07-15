@@ -43,9 +43,11 @@ strict = true
 files = [
     "apps/api/src",
     "apps/api/tests",
+    "apps/api/scripts",
     "apps/ingestion/src",
     "apps/ingestion/tests",
     "evals",
+    "infra/deploy",
 ]
 mypy_path = ["apps/api/src", "apps/ingestion/src", "apps/ingestion/tests"]
 explicit_package_bases = true
@@ -56,6 +58,14 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["pytesseract.*", "fitz.*", "sentence_transformers.*", "pdfplumber.*"]
+ignore_missing_imports = true
+
+# apps/api/tests isn't on mypy_path (adding it would collide with
+# apps/ingestion/tests' "conftest" — see the pytest addopts comment below);
+# api_fakes.py is still type-checked directly via `files` above, this just
+# lets sibling test files resolve the bare `from api_fakes import ...`.
+[[tool.mypy.overrides]]
+module = "api_fakes"
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

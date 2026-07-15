@@ -1,0 +1,12 @@
+{"id": "fx-01", "question": "What is required for an application for a banking licence in Tanzania?", "language": "en", "relevant_document_filename": "bot-2014-licensing.pdf", "must_refuse": false}
+{"id": "fx-02", "question": "What is the minimum capital requirement for a bank to obtain a licence?", "language": "en", "relevant_document_filename": "bot-2014-licensing.pdf", "must_refuse": false}
+{"id": "fx-03", "question": "What does the 2022 amendment to the Banking and Financial Institutions Licensing Regulations change?", "language": "en", "relevant_document_filename": "bot-2023-licensing-amendment.pdf", "must_refuse": false}
+{"id": "fx-04", "question": "What is the minimum Tier 1 capital required for a fully-fledged commercial bank?", "language": "en", "relevant_document_filename": "bot-2023-capital-adequacy.pdf", "must_refuse": false}
+{"id": "fx-05", "question": "What common equity Tier 1 capital ratio must a bank maintain?", "language": "en", "relevant_document_filename": "bot-2023-capital-adequacy.pdf", "must_refuse": false}
+{"id": "fx-06", "question": "What is required for electronic money issuance approval?", "language": "en", "relevant_document_filename": "bot-2015-electronic-money.pdf", "must_refuse": false}
+{"id": "fx-07", "question": "Under what section of the National Payment Systems Act are the Electronic Money Regulations made?", "language": "en", "relevant_document_filename": "bot-2015-electronic-money.pdf", "must_refuse": false}
+{"id": "fx-08", "question": "Ni sheria gani inayosimamia matumizi ya fedha za kigeni nchini Tanzania?", "language": "sw", "relevant_document_filename": "bot-2019-huduma-ndogo-swahili.pdf", "must_refuse": false}
+{"id": "fx-09", "question": "Je, mtu anaruhusiwa kufanya malipo ya bidhaa kwa kutumia fedha ya kigeni nchini?", "language": "sw", "relevant_document_filename": "bot-2019-huduma-ndogo-swahili.pdf", "must_refuse": false}
+{"id": "fx-10", "question": "What do the Foreign Exchange (Listed Securities) Regulations cover?", "language": "en", "relevant_document_filename": "bot-2003-forex-listed-securities.pdf", "must_refuse": false}
+{"id": "fx-11", "question": "What are the capital gains tax rates for individuals in Tanzania?", "language": "en", "relevant_document_filename": null, "must_refuse": true}
+{"id": "fx-12", "question": "What customs duties apply to imported vehicles under the EAC Customs Union?", "language": "en", "relevant_document_filename": null, "must_refuse": true}

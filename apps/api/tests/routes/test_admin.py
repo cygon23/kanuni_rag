@@ -1,16 +1,16 @@
 """Tests for admin routes: document upload, failed-job listing, and retry."""
 
 import hashlib
-from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
+from api_fakes import FakeDocumentStorage
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from kanuni_api.config import Settings, get_settings
 from kanuni_api.db import api_keys_repository, ingestion_jobs_repository
-from kanuni_api.dependencies import get_db_connection
+from kanuni_api.dependencies import get_db_connection, get_storage
 from kanuni_api.middleware.error_handler import register_exception_handlers
 from kanuni_api.models.api_key import ApiKeyRecord
 from kanuni_api.models.document import PipelineStage
@@ -47,19 +47,18 @@ def _stub_auth(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
-def _build_app(tmp_path: Path) -> FastAPI:
+def _build_app() -> FastAPI:
     app = FastAPI()
     register_exception_handlers(app)
     app.dependency_overrides[get_db_connection] = lambda: None
-    app.dependency_overrides[get_settings] = lambda: Settings(
-        storage_local_path=str(tmp_path), max_upload_size_bytes=10_000_000
-    )
+    app.dependency_overrides[get_settings] = lambda: Settings(max_upload_size_bytes=10_000_000)
+    app.dependency_overrides[get_storage] = lambda: FakeDocumentStorage()
     app.include_router(admin.router)
     return app
 
 
-def test_upload_document_requires_admin_scope(tmp_path: Path) -> None:
-    client = TestClient(_build_app(tmp_path), raise_server_exceptions=False)
+def test_upload_document_requires_admin_scope() -> None:
+    client = TestClient(_build_app(), raise_server_exceptions=False)
 
     response = client.post(
         "/v1/admin/documents",
@@ -71,16 +70,14 @@ def test_upload_document_requires_admin_scope(tmp_path: Path) -> None:
     assert response.status_code == 403
 
 
-def test_upload_document_returns_201_for_a_new_document(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_upload_document_returns_201_for_a_new_document(monkeypatch: pytest.MonkeyPatch) -> None:
     new_id = uuid4()
 
     async def _fake_ingest_upload(*args: object, **kwargs: object) -> UploadOutcome:
         return UploadOutcome(document_id=new_id, created=True)
 
     monkeypatch.setattr(document_ingestion_service, "ingest_upload", _fake_ingest_upload)
-    client = TestClient(_build_app(tmp_path), raise_server_exceptions=False)
+    client = TestClient(_build_app(), raise_server_exceptions=False)
 
     response = client.post(
         "/v1/admin/documents",
@@ -93,16 +90,14 @@ def test_upload_document_returns_201_for_a_new_document(
     assert response.json() == {"status": "created", "document_id": str(new_id)}
 
 
-def test_upload_document_returns_200_for_a_duplicate(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_upload_document_returns_200_for_a_duplicate(monkeypatch: pytest.MonkeyPatch) -> None:
     existing_id = uuid4()
 
     async def _fake_ingest_upload(*args: object, **kwargs: object) -> UploadOutcome:
         return UploadOutcome(document_id=existing_id, created=False)
 
     monkeypatch.setattr(document_ingestion_service, "ingest_upload", _fake_ingest_upload)
-    client = TestClient(_build_app(tmp_path), raise_server_exceptions=False)
+    client = TestClient(_build_app(), raise_server_exceptions=False)
 
     response = client.post(
         "/v1/admin/documents",
@@ -115,8 +110,8 @@ def test_upload_document_returns_200_for_a_duplicate(
     assert response.json() == {"status": "skipped", "document_id": str(existing_id)}
 
 
-def test_upload_document_rejects_unknown_source(tmp_path: Path) -> None:
-    client = TestClient(_build_app(tmp_path), raise_server_exceptions=False)
+def test_upload_document_rejects_unknown_source() -> None:
+    client = TestClient(_build_app(), raise_server_exceptions=False)
 
     response = client.post(
         "/v1/admin/documents",
@@ -129,8 +124,8 @@ def test_upload_document_rejects_unknown_source(tmp_path: Path) -> None:
     assert response.json()["error_code"] == "validation_failed"
 
 
-def test_list_failed_ingestion_jobs_requires_admin_scope(tmp_path: Path) -> None:
-    client = TestClient(_build_app(tmp_path), raise_server_exceptions=False)
+def test_list_failed_ingestion_jobs_requires_admin_scope() -> None:
+    client = TestClient(_build_app(), raise_server_exceptions=False)
 
     response = client.get("/v1/admin/ingestion-jobs", headers={"X-API-Key": QUERY_ONLY_KEY})
 
@@ -138,7 +133,7 @@ def test_list_failed_ingestion_jobs_requires_admin_scope(tmp_path: Path) -> None
 
 
 def test_list_failed_ingestion_jobs_returns_repository_results(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     job = IngestionJobSummary(
         id=uuid4(),
@@ -152,7 +147,7 @@ def test_list_failed_ingestion_jobs_returns_repository_results(
         return [job]
 
     monkeypatch.setattr(ingestion_jobs_repository, "list_failed", _fake_list_failed)
-    client = TestClient(_build_app(tmp_path), raise_server_exceptions=False)
+    client = TestClient(_build_app(), raise_server_exceptions=False)
 
     response = client.get("/v1/admin/ingestion-jobs", headers={"X-API-Key": ADMIN_KEY})
 
@@ -160,9 +155,7 @@ def test_list_failed_ingestion_jobs_returns_repository_results(
     assert response.json()[0]["attempt_count"] == 2
 
 
-def test_retry_ingestion_job_resets_the_document(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_retry_ingestion_job_resets_the_document(monkeypatch: pytest.MonkeyPatch) -> None:
     document_id = uuid4()
     reset_calls: list[UUID] = []
 
@@ -170,7 +163,7 @@ def test_retry_ingestion_job_resets_the_document(
         reset_calls.append(target_id)
 
     monkeypatch.setattr(ingestion_jobs_repository, "reset_for_retry", _fake_reset_for_retry)
-    client = TestClient(_build_app(tmp_path), raise_server_exceptions=False)
+    client = TestClient(_build_app(), raise_server_exceptions=False)
 
     response = client.post(
         f"/v1/admin/ingestion-jobs/{document_id}/retry", headers={"X-API-Key": ADMIN_KEY}

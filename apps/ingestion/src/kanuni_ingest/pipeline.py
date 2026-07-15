@@ -11,6 +11,7 @@ into its two halves.
 from uuid import UUID
 
 import asyncpg
+import sentry_sdk
 import structlog
 
 from kanuni_ingest.db import ingestion_jobs_repository
@@ -48,6 +49,10 @@ async def _record_failure(
     document_id: UUID,
     exc: Exception,
 ) -> None:
+    # A per-document stage failure never re-raises (the worker loop must
+    # keep processing the rest of the batch — §7's failure policy), so
+    # without an explicit capture here Sentry would never see it.
+    sentry_sdk.capture_exception(exc)
     attempt = await ingestion_jobs_repository.next_attempt_count(
         connection, document_id, PipelineStage.FAILED
     )
@@ -148,6 +153,7 @@ class PipelineRunner:
                 extracted,
                 target_tokens=self._chunk_target_tokens,
                 overlap_tokens=self._chunk_overlap_tokens,
+                language=document.language,
             )
             await _record_success(connection, registry, document_id, PipelineStage.CHUNKED)
 

@@ -1,0 +1,153 @@
+name: Evals
+
+# Path-filtered (§14 Phase 4): only runs when retrieval, generation,
+# prompts, chunking, or the eval scripts/golden set themselves change —
+# this job downloads real model weights and makes real Groq calls, so it's
+# deliberately not part of every PR's default `ci.yml` run.
+on:
+  pull_request:
+    paths:
+      - 'apps/api/src/kanuni_api/retrieval/**'
+      - 'apps/api/src/kanuni_api/generation/**'
+      - 'apps/api/src/kanuni_api/embedding.py'
+      - 'apps/api/src/kanuni_api/reranker.py'
+      - 'apps/ingestion/src/kanuni_ingest/stages/chunk.py'
+      - 'evals/**'
+  workflow_dispatch:
+    inputs:
+      regression_threshold:
+        description: 'Absolute-value per-metric regression threshold'
+        required: false
+        default: '0.02'
+
+env:
+  UV_VERSION: "0.5.11"
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  evals:
+    name: Retrieval + answer evals
+    runs-on: ubuntu-latest
+    # GROQ_API_KEY isn't available to workflows triggered by fork PRs
+    # (secrets aren't passed) — the answer-eval and judge steps are
+    # individually guarded below so a fork PR still gets a retrieval-only
+    # report instead of a hard failure.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg15
+        env:
+          POSTGRES_USER: kanuni
+          POSTGRES_PASSWORD: kanuni
+          POSTGRES_DB: kanuni
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U kanuni -d kanuni"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dbmate
+        run: |
+          curl -fsSL -o /usr/local/bin/dbmate \
+            https://github.com/amacneil/dbmate/releases/latest/download/dbmate-linux-amd64
+          chmod +x /usr/local/bin/dbmate
+
+      - name: Install tesseract
+        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-swa
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Python dependencies
+        run: uv sync --all-packages
+
+      - name: Run migrations up
+        run: dbmate --migrations-dir infra/migrations --no-dump-schema up
+        env:
+          DATABASE_URL: postgres://kanuni:kanuni@localhost:5432/kanuni?sslmode=disable
+
+      # Downloads bge-m3 + bge-reranker-v2-m3 on first use — the slowest
+      # step here; sentence-transformers caches under ~/.cache/huggingface,
+      # which actions/cache could speed up in a follow-up if this job's
+      # runtime becomes a problem.
+      - name: Ingest the 6 fixture documents (real embeddings + OCR)
+        run: uv run python evals/prepare_eval_corpus.py
+        env:
+          KANUNI_DATABASE_URL: postgres://kanuni:kanuni@localhost:5432/kanuni
+
+      - name: Retrieval eval (dense/sparse/hybrid/hybrid+rerank)
+        run: >
+          uv run python evals/run_retrieval_eval.py
+          --golden golden/qa.jsonl
+          --output reports/retrieval-results.json
+        working-directory: evals
+        env:
+          KANUNI_DATABASE_URL: postgres://kanuni:kanuni@localhost:5432/kanuni
+
+      - name: Answer eval (faithfulness, citations, refusal accuracy)
+        if: ${{ secrets.GROQ_API_KEY != '' }}
+        run: >
+          uv run python evals/run_answer_eval.py
+          --golden golden/qa.jsonl
+          --output reports/answer-results.json
+        working-directory: evals
+        env:
+          KANUNI_DATABASE_URL: postgres://kanuni:kanuni@localhost:5432/kanuni
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+
+      # Best-effort: pulls the retrieval/answer result JSON from the most
+      # recent successful run of this workflow on the PR's base branch, so
+      # the report can flag regressions. No baseline is committed to the
+      # repo (that would mean fabricating eval numbers before any real run
+      # has happened) — the first run on a fresh base branch simply has no
+      # baseline to diff against, and the report says so.
+      - name: Download baseline results from the base branch
+        if: github.event_name == 'pull_request'
+        uses: dawidd6/action-download-artifact@v6
+        continue-on-error: true
+        with:
+          workflow: evals.yml
+          branch: ${{ github.event.pull_request.base.ref }}
+          name: eval-results
+          path: evals/reports/baseline
+          if_no_artifact_found: warn
+
+      - name: Render report
+        run: >
+          uv run python evals/report.py
+          --retrieval-results reports/retrieval-results.json
+          --answer-results reports/answer-results.json
+          --baseline-retrieval-results reports/baseline/retrieval-results.json
+          --baseline-answer-results reports/baseline/answer-results.json
+          --threshold "${{ github.event.inputs.regression_threshold || '0.02' }}"
+        working-directory: evals
+
+      - name: Upload eval results (next run's baseline)
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results
+          path: |
+            evals/reports/retrieval-results.json
+            evals/reports/answer-results.json
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Upload markdown report
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-report
+          path: evals/reports/*.md
+          retention-days: 90
+
+      - name: Comment report on the PR
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: eval-report
+          path: evals/reports/*.md

@@ -188,6 +188,7 @@ def chunk_document(
     *,
     target_tokens: int = 450,
     overlap_tokens: int = 60,
+    language: str = "en",
 ) -> list[DocumentChunk]:
     """Split extracted text into layout-aware chunks, keeping clauses and tables intact.
 
@@ -202,6 +203,8 @@ def chunk_document(
         extracted: The stage-2 extraction result.
         target_tokens: Target chunk size in (approximate) tokens.
         overlap_tokens: Approximate token overlap between consecutive chunks.
+        language: The parent document's language code, stamped onto every
+            chunk (ADR 0004 — selects the sparse-index text-search config).
 
     Returns:
         Chunks in document order, each carrying a section reference and page range.
@@ -226,6 +229,7 @@ def chunk_document(
                 page_start=current_segments[0].page_start,
                 page_end=current_segments[-1].page_end,
                 token_count=current_tokens,
+                language=language,
             )
         )
 

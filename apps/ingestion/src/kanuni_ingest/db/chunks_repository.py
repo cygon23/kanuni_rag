@@ -50,9 +50,9 @@ async def replace_chunks(
                 """
                 INSERT INTO chunks (
                     document_id, section_ref, page_start, page_end,
-                    content, embedding, token_count, chunk_index
+                    content, embedding, token_count, chunk_index, language
                 )
-                VALUES ($1, $2, $3, $4, $5, $6::vector, $7, $8)
+                VALUES ($1, $2, $3, $4, $5, $6::vector, $7, $8, $9)
                 """,
                 document_id,
                 chunk.section_ref,
@@ -62,6 +62,7 @@ async def replace_chunks(
                 _format_vector(chunk.embedding),
                 chunk.token_count,
                 chunk.chunk_index,
+                chunk.language,
             )
 
 

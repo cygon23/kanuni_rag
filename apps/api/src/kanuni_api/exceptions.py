@@ -115,3 +115,17 @@ class AuthorizationError(KanuniError):
     error_code = "authorization_failed"
     status_code = 403
     detail = "This API key does not have the required scope."
+
+
+class RateLimitExceededError(KanuniError):
+    """Raised when a caller exceeds their API key's `rate_limit_per_min` (§4.3, §12).
+
+    Not in PROJECT_SPEC.md §4.2's enumerated hierarchy either — same
+    situation as :class:`AuthenticationError`: the auth model (§4.3)
+    requires per-key rate limiting, so the error hierarchy needs a 429
+    case for it.
+    """
+
+    error_code = "rate_limit_exceeded"
+    status_code = 429
+    detail = "Rate limit exceeded for this API key. Please slow down."

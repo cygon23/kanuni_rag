@@ -2,6 +2,7 @@
 
 from typing import Any
 
+import sentry_sdk
 import structlog
 from fastapi import FastAPI, status
 from fastapi.exceptions import RequestValidationError
@@ -94,6 +95,9 @@ def register_exception_handlers(app: FastAPI) -> None:
             path=request.url.path,
             exc_info=exc,
         )
+        # This handler is what keeps the exception from propagating to
+        # Sentry's ASGI-level auto-capture, so it must report explicitly.
+        sentry_sdk.capture_exception(exc)
         return _problem_response(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             error_code="internal_error",

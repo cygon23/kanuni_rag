@@ -1,0 +1,96 @@
+name: Deploy
+
+# §12: merge to main -> migrate -> deploy staging -> smoke test -> manual
+# approval gate -> deploy prod. apps/api only, to Hugging Face Spaces
+# (Docker SDK) — apps/web deploys via Vercel's own native Git integration
+# (no job needed here; see docs/NEEDS.md), and the ingestion worker's own
+# deployment isn't built out yet (see docs/PROGRESS.md's Open ADR
+# candidates). No release-tagging job: GlitchTip (the default error
+# tracker — see docs/NEEDS.md) isn't confirmed to implement Sentry's
+# release-creation API that `getsentry/action-release` needs; the release
+# SHA still tags every event via `sentry_sdk.init(release=...)` /
+# `Sentry.init` at runtime regardless, which is the part that actually
+# matters for triage.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/api/**'
+      - 'infra/migrations/**'
+      - 'infra/deploy/**'
+      - 'Dockerfile'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+jobs:
+  migrate:
+    name: Run database migrations
+    runs-on: ubuntu-latest
+    concurrency: kanuni-migrate
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dbmate
+        run: |
+          curl -fsSL -o /usr/local/bin/dbmate \
+            https://github.com/amacneil/dbmate/releases/latest/download/dbmate-linux-amd64
+          chmod +x /usr/local/bin/dbmate
+      - name: dbmate up
+        run: dbmate --migrations-dir infra/migrations --no-dump-schema up
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+  deploy-staging:
+    name: Deploy to Hugging Face Spaces (staging)
+    needs: migrate
+    runs-on: ubuntu-latest
+    concurrency: deploy-staging
+    steps:
+      - uses: actions/checkout@v4
+      - name: Push deploy bundle
+        run: infra/deploy/deploy_to_hf_space.sh kanuni-api-staging "Kanuni API (staging)"
+        env:
+          HF_USERNAME: ${{ vars.HF_USERNAME }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+
+  smoke-test-staging:
+    name: Smoke test staging
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Docker Spaces cold-build/cold-start on the free tier — give it
+      # room before the smoke test's own requests start.
+      - name: Wait for the Space to come up
+        run: sleep 60
+      - name: /readyz + one canned query
+        run: >
+          python3 infra/deploy/smoke_test.py
+          --base-url https://${{ vars.HF_USERNAME }}-kanuni-api-staging.hf.space
+          --api-key "${{ secrets.STAGING_API_KEY }}"
+
+  deploy-production:
+    name: Deploy to Hugging Face Spaces (production)
+    needs: smoke-test-staging
+    runs-on: ubuntu-latest
+    concurrency: deploy-production
+    # Manual approval gate (§12): configure this environment in GitHub
+    # (Settings -> Environments -> production -> required reviewers) —
+    # the job pauses here until an approver approves the run. See
+    # docs/NEEDS.md for the exact steps.
+    environment:
+      name: production
+      url: https://${{ vars.HF_USERNAME }}-kanuni-api.hf.space
+    steps:
+      - uses: actions/checkout@v4
+      - name: Push deploy bundle
+        run: infra/deploy/deploy_to_hf_space.sh kanuni-api "Kanuni API"
+        env:
+          HF_USERNAME: ${{ vars.HF_USERNAME }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      - name: Wait for the Space to come up
+        run: sleep 60
+      - name: Smoke test production
+        run: >
+          python3 infra/deploy/smoke_test.py
+          --base-url https://${{ vars.HF_USERNAME }}-kanuni-api.hf.space
+          --api-key "${{ secrets.PROD_API_KEY }}"

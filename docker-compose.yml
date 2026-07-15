@@ -30,10 +30,33 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
+    # Dockerfile's CMD is the production default (no --reload); add it
+    # back here for local dev, so the deployed image and the dev command
+    # only differ by this one flag.
+    command:
+      [
+        "uv",
+        "run",
+        "--project",
+        "/workspace/apps/api",
+        "uvicorn",
+        "kanuni_api.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--reload",
+        "--reload-dir",
+        "/workspace/apps/api/src",
+      ]
     env_file: .env
     environment:
+      # Overrides .env's KANUNI_DATABASE_URL: `make dev` always uses this
+      # local `db` service, regardless of what's in .env (e.g. a real
+      # Supabase URL for other tooling) — SUPABASE_URL/
+      # SUPABASE_SERVICE_ROLE_KEY still come from .env (env_file above)
+      # for document storage, which has no local-container equivalent.
       KANUNI_DATABASE_URL: postgresql://${POSTGRES_USER:-kanuni}:${POSTGRES_PASSWORD:-kanuni}@db:5432/${POSTGRES_DB:-kanuni}
-      KANUNI_STORAGE_LOCAL_PATH: /data/documents
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -43,7 +66,6 @@ services:
       - ./apps/api/src:/workspace/apps/api/src
       - ./apps/api/tests:/workspace/apps/api/tests
       - ./sources.yaml:/workspace/apps/api/sources.yaml
-      - document-storage:/data/documents
 
   ingestion:
     build:
@@ -52,7 +74,6 @@ services:
     env_file: .env
     environment:
       KANUNI_DATABASE_URL: postgresql://${POSTGRES_USER:-kanuni}:${POSTGRES_PASSWORD:-kanuni}@db:5432/${POSTGRES_DB:-kanuni}
-      KANUNI_STORAGE_LOCAL_PATH: /data/documents
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -60,14 +81,19 @@ services:
       - ./apps/ingestion/src:/workspace/apps/ingestion/src
       - ./apps/ingestion/tests:/workspace/apps/ingestion/tests
       - ./sources.yaml:/workspace/apps/ingestion/sources.yaml
-      - document-storage:/data/documents
 
   web:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+    env_file: .env
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000
+      # Docker network service name, not localhost — apps/web's proxy
+      # routes (src/app/api/*/route.ts) run server-side, inside this
+      # container, and reach the api service the same way api reaches db.
+      # KANUNI_API_KEY comes from .env (see .env.example's Phase 5
+      # section and docs/NEEDS.md for how to create one).
+      KANUNI_API_BASE_URL: http://api:8000
     ports:
       - "3000:3000"
     volumes:
@@ -78,4 +104,3 @@ services:
 
 volumes:
   pgdata:
-  document-storage:

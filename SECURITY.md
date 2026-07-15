@@ -23,8 +23,8 @@ reasonable period to fix the issue before any public disclosure.
 
 In scope: the API service, ingestion worker, frontend, and infrastructure
 configuration in this repository. Out of scope: third-party services we
-depend on (Supabase, Groq, Fly.io, Vercel) — report those directly to the
-respective vendor.
+depend on (Supabase, Groq, Hugging Face, Vercel, GlitchTip) — report
+those directly to the respective vendor.
 
 ## Handling of secrets
 

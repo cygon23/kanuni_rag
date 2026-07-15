@@ -17,7 +17,8 @@ from kanuni_ingest.metadata_extraction import GroqMetadataExtractionProvider
 from kanuni_ingest.pipeline import PipelineRunner
 from kanuni_ingest.registry import DocumentRegistry
 from kanuni_ingest.stages.ocr import TesseractOCREngine
-from kanuni_ingest.storage import LocalFilesystemStorage
+from kanuni_ingest.storage import SupabaseStorage
+from kanuni_ingest.telemetry.sentry import configure_sentry
 
 logger = structlog.get_logger()
 
@@ -25,9 +26,14 @@ logger = structlog.get_logger()
 async def run_forever() -> None:
     """Start the ingestion worker process: poll for pending documents and process them."""
     settings = get_settings()
+    configure_sentry(dsn=settings.sentry_dsn, release=settings.release_sha)
     pool = await create_pool(settings.database_url)
     runner = PipelineRunner(
-        storage=LocalFilesystemStorage(settings.storage_local_path),
+        storage=SupabaseStorage(
+            base_url=settings.supabase_url,
+            service_role_key=settings.supabase_service_role_key,
+            bucket=settings.storage_bucket,
+        ),
         ocr_engine=TesseractOCREngine(),
         ocr_languages=settings.ocr_languages,
         embedding_provider=Bgem3EmbeddingProvider(settings.embedding_model),
